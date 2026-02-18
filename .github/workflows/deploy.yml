@@ -1,0 +1,87 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [ "main" ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+
+    steps:
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            # 1. Login to GitHub Container Registry on the VPS
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            
+            # 2. Create a directory for the app if it doesn't exist
+            mkdir -p ~/atlassian-app
+            cd ~/atlassian-app
+
+            # 3. Create/Update docker-compose.yml file on the server
+            cat <<EOF > docker-compose.yml
+            version: '3.8'
+            services:
+              app:
+                image: ghcr.io/${{ github.repository }}:latest
+                container_name: atlassian-checker
+                restart: always
+                ports:
+                  - "3000:3000"
+                environment:
+                  - PORT=3000
+                  - MONGO_URI=mongodb://mongo:27017/atlassian-compat
+                depends_on:
+                  - mongo
+              mongo:
+                image: mongo:6.0
+                container_name: atlassian-mongo
+                restart: always
+                volumes:
+                  - mongo-data:/data/db
+            volumes:
+              mongo-data:
+            EOF
+
+            # 4. Pull the latest image
+            docker compose pull
+
+            # 5. Restart containers with new code
+            docker compose up -d --remove-orphans
+            
+            # 6. Cleanup unused images to save space
+            docker image prune -f

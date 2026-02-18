@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  # Your Node.js Application
+  app:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/${GITHUB_REPOSITORY_NAME}:latest
+    container_name: atlassian-checker
+    restart: always
+    ports:
+      - "3000:3000"  # Opens port 3000 to the world
+    environment:
+      - PORT=3000
+      - MONGO_URI=mongodb://mongo:27017/atlassian-compat
+    depends_on:
+      - mongo
+
+  # MongoDB Database
+  mongo:
+    image: mongo:6.0
+    container_name: atlassian-mongo
+    restart: always
+    volumes:
+      - mongo-data:/data/db
+
+volumes:
+  mongo-data:

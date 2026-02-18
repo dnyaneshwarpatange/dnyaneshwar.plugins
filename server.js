@@ -1,3 +1,5 @@
+const dotenv = require('dotenv');
+dotenv.config();
 const express = require('express');
 const session = require('express-session');
 const mongoose = require('mongoose');
@@ -16,10 +18,18 @@ const USERS = [
 ];
 
 // ─── MongoDB Connection ───────────────────────────────────────────────────────
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/atlassian-compat';
-mongoose.connect(MONGO_URI)
+const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://erdnyaneshwarpatange_db_user:7gb3YSYvwLcTHeGi@cluster0.0vluu1j.mongodb.net/atlassian-compat?retryWrites=true&w=majority';
+
+mongoose.connect(MONGO_URI, {
+  serverSelectionTimeoutMS: 5000,
+  bufferCommands: false
+})
   .then(() => console.log('✅ MongoDB connected'))
-  .catch(err => console.error('❌ MongoDB error:', err.message));
+  .catch(err => {
+    console.error('❌ MongoDB connection failed:', err.message);
+    console.error('🔧 Check your MONGO_URI in .env file');
+    process.exit(1);
+  });
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 app.use(express.json());
