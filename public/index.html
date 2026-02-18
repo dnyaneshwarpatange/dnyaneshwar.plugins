@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Atlassian Plugin Compatibility Checker</title>
+  <style>
+    /* ─── Reset & Base ─── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --atlassian-blue: #0052CC;
+      --atlassian-blue-dark: #0747A6;
+      --atlassian-blue-light: #DEEBFF;
+      --jira-blue: #2684FF;
+      --confluence-blue: #0065FF;
+      --green: #00875A;
+      --green-light: #E3FCEF;
+      --red: #DE350B;
+      --red-light: #FFEBE6;
+      --orange: #FF8B00;
+      --orange-light: #FFFAE6;
+      --gray-50: #F4F5F7;
+      --gray-100: #EBECF0;
+      --gray-200: #DFE1E6;
+      --gray-400: #B3BAC5;
+      --gray-600: #6B778C;
+      --gray-700: #505F79;
+      --gray-900: #172B4D;
+      --white: #FFFFFF;
+      --radius: 4px;
+      --shadow: 0 1px 3px rgba(9,30,66,.12), 0 0 0 1px rgba(9,30,66,.08);
+      --shadow-lg: 0 8px 16px rgba(9,30,66,.24);
+      --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    html { font-family: var(--font); font-size: 14px; color: var(--gray-900); background: #F4F5F7; }
+    body { min-height: 100vh; }
+    input, select, textarea, button { font-family: var(--font); }
+
+    /* ─── Login Screen ─── */
+    #login-screen {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; background: linear-gradient(135deg, #0052CC 0%, #0747A6 50%, #172B4D 100%);
+    }
+    .login-card {
+      background: white; border-radius: 8px; padding: 40px 48px; width: 400px;
+      box-shadow: var(--shadow-lg);
+    }
+    .login-logo {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 28px; justify-content: center;
+    }
+    .login-logo svg { width: 36px; height: 36px; }
+    .login-logo-text { font-size: 20px; font-weight: 700; color: var(--gray-900); }
+    .login-subtitle { text-align: center; color: var(--gray-600); font-size: 13px; margin-bottom: 28px; }
+    .login-card h2 { text-align: center; font-size: 24px; font-weight: 700; color: var(--gray-900); margin-bottom: 6px; }
+    .field-group { margin-bottom: 16px; }
+    .field-group label { display: block; font-size: 12px; font-weight: 600; color: var(--gray-700); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .04em; }
+    .field-group input {
+      width: 100%; border: 2px solid var(--gray-200); border-radius: var(--radius);
+      padding: 10px 12px; font-size: 14px; transition: border-color .15s;
+    }
+    .field-group input:focus { outline: none; border-color: var(--atlassian-blue); }
+    .btn-primary {
+      width: 100%; padding: 10px; background: var(--atlassian-blue); color: white;
+      border: none; border-radius: var(--radius); font-size: 15px; font-weight: 600;
+      cursor: pointer; transition: background .15s; margin-top: 8px;
+    }
+    .btn-primary:hover { background: var(--atlassian-blue-dark); }
+    .btn-primary:disabled { background: var(--gray-400); cursor: not-allowed; }
+    .login-error {
+      background: var(--red-light); border: 1px solid #FF8F73; color: var(--red);
+      padding: 10px 12px; border-radius: var(--radius); font-size: 13px; margin-bottom: 16px; display: none;
+    }
+    .login-creds {
+      margin-top: 20px; padding: 12px; background: var(--gray-50); border-radius: var(--radius);
+      font-size: 11px; color: var(--gray-600); text-align: center; border: 1px solid var(--gray-200);
+    }
+
+    /* ─── App Shell ─── */
+    #app { display: none; flex-direction: column; min-height: 100vh; }
+
+    /* ─── Top Nav ─── */
+    .topnav {
+      background: var(--gray-900); color: white; display: flex; align-items: center;
+      padding: 0 24px; height: 56px; box-shadow: 0 2px 4px rgba(0,0,0,.2); position: sticky; top: 0; z-index: 100;
+    }
+    .topnav-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .topnav-brand svg { width: 28px; height: 28px; }
+    .topnav-brand-text { font-size: 16px; font-weight: 700; color: white; }
+    .topnav-spacer { flex: 1; }
+    .topnav-user { display: flex; align-items: center; gap: 12px; }
+    .topnav-user-avatar {
+      width: 32px; height: 32px; border-radius: 50%; background: var(--atlassian-blue);
+      display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px;
+    }
+    .topnav-user-name { font-size: 13px; color: #B0BEC5; }
+    .btn-logout {
+      background: none; border: 1px solid rgba(255,255,255,.25); color: white; padding: 5px 14px;
+      border-radius: var(--radius); cursor: pointer; font-size: 13px; transition: all .15s;
+    }
+    .btn-logout:hover { background: rgba(255,255,255,.12); }
+
+    /* ─── Tab Bar ─── */
+    .tab-bar {
+      display: flex; background: white; border-bottom: 2px solid var(--gray-200);
+      padding: 0 24px; position: sticky; top: 56px; z-index: 90;
+    }
+    .tab-btn {
+      display: flex; align-items: center; gap: 8px; padding: 14px 20px;
+      background: none; border: none; border-bottom: 3px solid transparent;
+      cursor: pointer; font-size: 14px; font-weight: 600; color: var(--gray-600);
+      transition: all .15s; margin-bottom: -2px; white-space: nowrap;
+    }
+    .tab-btn:hover { color: var(--gray-900); background: var(--gray-50); }
+    .tab-btn.active { color: var(--atlassian-blue); border-bottom-color: var(--atlassian-blue); }
+    .tab-badge {
+      background: var(--gray-200); color: var(--gray-700); padding: 2px 8px;
+      border-radius: 12px; font-size: 11px; font-weight: 700;
+    }
+    .tab-btn.active .tab-badge { background: var(--atlassian-blue-light); color: var(--atlassian-blue); }
+
+    /* ─── Main Content ─── */
+    .main-content { flex: 1; padding: 24px; max-width: 1400px; margin: 0 auto; width: 100%; }
+
+    /* ─── Section Cards ─── */
+    .card {
+      background: white; border-radius: 8px; box-shadow: var(--shadow);
+      margin-bottom: 20px; overflow: hidden;
+    }
+    .card-header {
+      padding: 16px 20px; border-bottom: 1px solid var(--gray-100);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .card-title { font-size: 16px; font-weight: 700; color: var(--gray-900); }
+    .card-subtitle { font-size: 12px; color: var(--gray-600); margin-top: 2px; }
+    .card-body { padding: 20px; }
+
+    /* ─── Product Badge ─── */
+    .product-badge {
+      display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px;
+      border-radius: 16px; font-size: 13px; font-weight: 700;
+    }
+    .product-badge.jira { background: #DEEBFF; color: var(--jira-blue); }
+    .product-badge.confluence { background: #E6FCFF; color: var(--confluence-blue); }
+
+    /* ─── Check Form ─── */
+    .check-form { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+    .check-form .field-group { flex: 1; min-width: 200px; margin: 0; }
+    .check-form .field-group label { text-transform: uppercase; letter-spacing: .04em; font-size: 11px; }
+    .check-form .field-group input {
+      width: 100%; border: 2px solid var(--gray-200); border-radius: var(--radius);
+      padding: 9px 12px; font-size: 14px; transition: border-color .15s;
+    }
+    .check-form .field-group input:focus { outline: none; border-color: var(--atlassian-blue); }
+    .btn-check {
+      padding: 10px 24px; background: var(--atlassian-blue); color: white; border: none;
+      border-radius: var(--radius); font-size: 14px; font-weight: 600; cursor: pointer;
+      transition: background .15s; white-space: nowrap; display: flex; align-items: center; gap: 8px;
+    }
+    .btn-check:hover:not(:disabled) { background: var(--atlassian-blue-dark); }
+    .btn-check:disabled { background: var(--gray-400); cursor: not-allowed; }
+
+    /* ─── Plugin Table ─── */
+    .plugin-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .btn-sm {
+      padding: 6px 14px; border-radius: var(--radius); border: none; cursor: pointer;
+      font-size: 12px; font-weight: 600; transition: all .15s; display: flex; align-items: center; gap: 5px;
+    }
+    .btn-add { background: var(--green); color: white; }
+    .btn-add:hover { background: #006644; }
+    .btn-danger { background: var(--red-light); color: var(--red); border: 1px solid #FF8F73; }
+    .btn-danger:hover { background: #FFBDAD; }
+    .btn-secondary { background: var(--gray-100); color: var(--gray-700); border: 1px solid var(--gray-200); }
+    .btn-secondary:hover { background: var(--gray-200); }
+    .btn-edit { background: var(--atlassian-blue-light); color: var(--atlassian-blue); border: 1px solid #4C9AFF; }
+    .btn-edit:hover { background: #B3D4FF; }
+
+    .plugin-table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th {
+      background: var(--gray-50); color: var(--gray-700); font-weight: 700; font-size: 11px;
+      text-transform: uppercase; letter-spacing: .06em; padding: 10px 12px;
+      border-bottom: 2px solid var(--gray-200); text-align: left; white-space: nowrap;
+    }
+    tbody tr { border-bottom: 1px solid var(--gray-100); transition: background .1s; }
+    tbody tr:hover { background: var(--gray-50); }
+    tbody td { padding: 10px 12px; vertical-align: middle; }
+    td.plugin-name { font-weight: 600; color: var(--gray-900); }
+    td.plugin-url a { color: var(--atlassian-blue); text-decoration: none; font-size: 12px; word-break: break-all; }
+    td.plugin-url a:hover { text-decoration: underline; }
+    .empty-state {
+      text-align: center; padding: 40px 20px; color: var(--gray-600);
+    }
+    .empty-state-icon { font-size: 36px; margin-bottom: 12px; }
+    .empty-state-text { font-size: 14px; }
+
+    /* ─── Add Plugin Modal ─── */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(9,30,66,.54); z-index: 1000;
+      display: flex; align-items: center; justify-content: center; padding: 20px;
+    }
+    .modal {
+      background: white; border-radius: 8px; width: 560px; max-width: 100%;
+      box-shadow: var(--shadow-lg); max-height: 90vh; overflow-y: auto;
+    }
+    .modal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 20px; border-bottom: 1px solid var(--gray-200);
+    }
+    .modal-title { font-size: 18px; font-weight: 700; }
+    .modal-close { background: none; border: none; cursor: pointer; color: var(--gray-600); font-size: 20px; line-height: 1; }
+    .modal-close:hover { color: var(--gray-900); }
+    .modal-body { padding: 20px; }
+    .modal-footer { padding: 16px 20px; border-top: 1px solid var(--gray-200); display: flex; gap: 10px; justify-content: flex-end; }
+    .modal .field-group { margin-bottom: 16px; }
+    .modal .field-group label { display: block; font-size: 12px; font-weight: 600; color: var(--gray-700); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .04em; }
+    .modal .field-group input,
+    .modal .field-group textarea,
+    .modal .field-group select {
+      width: 100%; border: 2px solid var(--gray-200); border-radius: var(--radius);
+      padding: 9px 12px; font-size: 14px; transition: border-color .15s;
+    }
+    .modal .field-group input:focus,
+    .modal .field-group textarea:focus { outline: none; border-color: var(--atlassian-blue); }
+    .modal .field-group textarea { resize: vertical; min-height: 80px; }
+    .modal .field-group .hint { font-size: 11px; color: var(--gray-600); margin-top: 4px; }
+    .btn-cancel { padding: 9px 18px; background: var(--gray-100); border: 1px solid var(--gray-200); border-radius: var(--radius); cursor: pointer; font-size: 14px; font-weight: 600; color: var(--gray-700); transition: all .15s; }
+    .btn-cancel:hover { background: var(--gray-200); }
+    .btn-save { padding: 9px 18px; background: var(--atlassian-blue); border: none; border-radius: var(--radius); cursor: pointer; font-size: 14px; font-weight: 600; color: white; transition: background .15s; }
+    .btn-save:hover { background: var(--atlassian-blue-dark); }
+
+    /* ─── Progress Panel ─── */
+    .progress-panel {
+      background: var(--gray-900); border-radius: 8px; color: #B0BEC5;
+      font-family: 'Consolas', 'Monaco', monospace; font-size: 12px; padding: 16px;
+      max-height: 280px; overflow-y: auto; display: none;
+    }
+    .progress-panel.active { display: block; }
+    .progress-line { margin-bottom: 4px; line-height: 1.6; }
+    .progress-line.start { color: #82AAFF; font-weight: 700; }
+    .progress-line.complete { color: #C3E88D; font-weight: 700; }
+    .progress-line.error { color: #FF8B8B; }
+    .progress-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,.1);
+    }
+    .progress-title { color: white; font-weight: 700; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+    .spinner {
+      width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.3);
+      border-top-color: white; border-radius: 50%; animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .progress-bar-wrap { background: rgba(255,255,255,.1); border-radius: 4px; height: 4px; margin-bottom: 12px; overflow: hidden; }
+    .progress-bar { background: var(--atlassian-blue); height: 100%; border-radius: 4px; transition: width .3s; width: 0%; }
+
+    /* ─── Results Section ─── */
+    .results-header {
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 12px; margin-bottom: 16px;
+    }
+    .results-title { font-size: 16px; font-weight: 700; }
+    .btn-download {
+      padding: 9px 20px; background: var(--green); color: white; border: none;
+      border-radius: var(--radius); cursor: pointer; font-size: 14px; font-weight: 600;
+      transition: background .15s; display: flex; align-items: center; gap: 8px;
+    }
+    .btn-download:hover { background: #006644; }
+
+    /* Stats row */
+    .stats-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+    .stat-card {
+      flex: 1; min-width: 120px; background: white; border-radius: 8px; padding: 16px;
+      text-align: center; box-shadow: var(--shadow); border-top: 3px solid transparent;
+    }
+    .stat-card.compatible { border-top-color: var(--green); }
+    .stat-card.not-compatible { border-top-color: var(--red); }
+    .stat-card.error { border-top-color: var(--orange); }
+    .stat-card.total { border-top-color: var(--atlassian-blue); }
+    .stat-num { font-size: 32px; font-weight: 800; margin-bottom: 4px; }
+    .stat-card.compatible .stat-num { color: var(--green); }
+    .stat-card.not-compatible .stat-num { color: var(--red); }
+    .stat-card.error .stat-num { color: var(--orange); }
+    .stat-card.total .stat-num { color: var(--atlassian-blue); }
+    .stat-label { font-size: 12px; color: var(--gray-600); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+
+    /* Result table */
+    .result-badge {
+      display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px;
+      border-radius: 12px; font-size: 12px; font-weight: 700; white-space: nowrap;
+    }
+    .badge-compatible { background: var(--green-light); color: var(--green); }
+    .badge-not-compatible { background: var(--red-light); color: var(--red); }
+    .badge-error { background: var(--orange-light); color: var(--orange); }
+    .badge-unknown { background: var(--gray-100); color: var(--gray-600); }
+    .version-pill {
+      background: var(--atlassian-blue-light); color: var(--atlassian-blue);
+      padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; white-space: nowrap;
+    }
+
+    /* ─── Bulk Import ─── */
+    .bulk-hint { font-size: 12px; color: var(--gray-600); margin-bottom: 8px; }
+
+    /* ─── Misc ─── */
+    .hidden { display: none !important; }
+    .flex { display: flex; }
+    .gap-8 { gap: 8px; }
+    .mt-12 { margin-top: 12px; }
+
+    /* ─── Scrollbar ─── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--gray-300, #CBD5E1); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════ LOGIN SCREEN ═══════════════════ -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M15.368 2.045C15.165 1.752 14.835 1.752 14.632 2.045L7.152 13.113C6.949 13.406 7.084 13.75 7.452 13.75H12.5V28.25C12.5 28.664 12.836 29 13.25 29H18.75C19.164 29 19.5 28.664 19.5 28.25V13.75H24.548C24.916 13.75 25.051 13.406 24.848 13.113L17.368 2.045Z" fill="#0052CC"/>
+      </svg>
+      <span class="login-logo-text">Atlassian Compat Checker</span>
+    </div>
+    <h2>Sign in</h2>
+    <p class="login-subtitle">Plugin Compatibility Tool for Jira & Confluence DC</p>
+    <div class="login-error" id="login-error"></div>
+    <div class="field-group">
+      <label>Username</label>
+      <input type="text" id="login-username" placeholder="Enter username" autocomplete="username">
+    </div>
+    <div class="field-group">
+      <label>Password</label>
+      <input type="password" id="login-password" placeholder="Enter password" autocomplete="current-password">
+    </div>
+    <button class="btn-primary" id="login-btn" onclick="doLogin()">Sign in</button>
+    <div class="login-creds">
+      <strong>Demo credentials:</strong><br>
+      admin / Admin@123 &nbsp;|&nbsp; developer / Dev@456
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ MAIN APP ═══════════════════ -->
+<div id="app" style="display:none;flex-direction:column;min-height:100vh;">
+
+  <!-- Top Nav -->
+  <nav class="topnav">
+    <div class="topnav-brand">
+      <svg viewBox="0 0 32 32" fill="none" width="28" height="28">
+        <path d="M15.368 2.045C15.165 1.752 14.835 1.752 14.632 2.045L7.152 13.113C6.949 13.406 7.084 13.75 7.452 13.75H12.5V28.25C12.5 28.664 12.836 29 13.25 29H18.75C19.164 29 19.5 28.664 19.5 28.25V13.75H24.548C24.916 13.75 25.051 13.406 24.848 13.113L17.368 2.045Z" fill="#4C9AFF"/>
+      </svg>
+      <span class="topnav-brand-text">Atlassian Plugin Compatibility Checker</span>
+    </div>
+    <div class="topnav-spacer"></div>
+    <div class="topnav-user">
+      <div class="topnav-user-avatar" id="user-avatar">A</div>
+      <span class="topnav-user-name" id="user-name">Loading...</span>
+      <button class="btn-logout" onclick="doLogout()">Sign out</button>
+    </div>
+  </nav>
+
+  <!-- Tab Bar -->
+  <div class="tab-bar">
+    <button class="tab-btn active" id="tab-jira" onclick="switchTab('jira')">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1.333A6.67 6.67 0 0 0 1.333 8 6.67 6.67 0 0 0 8 14.667 6.67 6.67 0 0 0 14.667 8 6.67 6.67 0 0 0 8 1.333Zm0 1.334a5.336 5.336 0 0 1 5.333 5.333A5.336 5.336 0 0 1 8 13.333 5.336 5.336 0 0 1 2.667 8 5.336 5.336 0 0 1 8 2.667Zm-.667 2v4.666L10.667 11l.666-1.12-2.666-1.546V4.667H7.333Z"/></svg>
+      Jira Data Center
+      <span class="tab-badge" id="jira-count">0</span>
+    </button>
+    <button class="tab-btn" id="tab-confluence" onclick="switchTab('confluence')">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2.04 11.56c-.24.36-.1.82.26 1.02l4.48 2.4c.22.12.48.12.7 0l4.48-2.4c.36-.2.5-.66.26-1.02L8.6 7.12c-.2-.3-.6-.3-.8 0l-3.68 4.44H2.04zm0-7.12C1.8 4.8 1.94 5.26 2.3 5.46l4.48 2.4c.22.12.48.12.7 0l4.48-2.4c.36-.2.5-.66.26-1.02L8.6 0 5.88 3.24a1.06 1.06 0 0 0-1.48 1.48L2.04 4.44z"/></svg>
+      Confluence Data Center
+      <span class="tab-badge" id="confluence-count">0</span>
+    </button>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main-content">
+
+    <!-- ──── JIRA PANEL ──── -->
+    <div id="panel-jira">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Check Compatibility</div>
+            <div class="card-subtitle">Enter target Jira Data Center version and run compatibility check for all plugins below</div>
+          </div>
+          <span class="product-badge jira">⚡ Jira</span>
+        </div>
+        <div class="card-body">
+          <div class="check-form">
+            <div class="field-group">
+              <label>Target Jira DC Version</label>
+              <input type="text" id="jira-dc-version" placeholder="e.g. 9.12.5" />
+            </div>
+            <button class="btn-check" id="jira-check-btn" onclick="startCheck('jira')">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M6.5 0a6.5 6.5 0 0 1 5.19 10.397l4.207 4.206-.707.707-4.206-4.207A6.5 6.5 0 1 1 6.5 0Zm0 1a5.5 5.5 0 1 0 0 11A5.5 5.5 0 0 0 6.5 1Z"/></svg>
+              Check Compatibility
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Jira Plugins</div>
+            <div class="card-subtitle">Manage your Jira plugins list — data persists across sessions</div>
+          </div>
+          <div class="plugin-actions">
+            <button class="btn-sm btn-secondary" onclick="showBulkModal('jira')">📋 Bulk Import</button>
+            <button class="btn-sm btn-add" onclick="showAddModal('jira')">+ Add Plugin</button>
+          </div>
+        </div>
+        <div class="card-body" style="padding:0">
+          <div class="plugin-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Plugin Name</th>
+                  <th>Marketplace URL</th>
+                  <th>Current Version</th>
+                  <th>Notes</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="jira-plugin-tbody">
+                <tr><td colspan="6"><div class="empty-state"><div class="empty-state-icon">🔌</div><div class="empty-state-text">No Jira plugins yet. Click "+ Add Plugin" to get started.</div></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Progress -->
+      <div class="progress-panel" id="jira-progress">
+        <div class="progress-header">
+          <div class="progress-title"><div class="spinner" id="jira-spinner"></div> Scraping in progress...</div>
+          <span id="jira-progress-count" style="color:#B0BEC5;font-size:11px;"></span>
+        </div>
+        <div class="progress-bar-wrap"><div class="progress-bar" id="jira-progress-bar"></div></div>
+        <div id="jira-progress-log"></div>
+      </div>
+
+      <!-- Results -->
+      <div id="jira-results" class="hidden"></div>
+    </div>
+
+    <!-- ──── CONFLUENCE PANEL ──── -->
+    <div id="panel-confluence" class="hidden">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Check Compatibility</div>
+            <div class="card-subtitle">Enter target Confluence Data Center version and run compatibility check</div>
+          </div>
+          <span class="product-badge confluence">☁ Confluence</span>
+        </div>
+        <div class="card-body">
+          <div class="check-form">
+            <div class="field-group">
+              <label>Target Confluence DC Version</label>
+              <input type="text" id="confluence-dc-version" placeholder="e.g. 9.31.0" />
+            </div>
+            <button class="btn-check" id="confluence-check-btn" onclick="startCheck('confluence')">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M6.5 0a6.5 6.5 0 0 1 5.19 10.397l4.207 4.206-.707.707-4.206-4.207A6.5 6.5 0 1 1 6.5 0Zm0 1a5.5 5.5 0 1 0 0 11A5.5 5.5 0 0 0 6.5 1Z"/></svg>
+              Check Compatibility
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <div class="card-title">Confluence Plugins</div>
+            <div class="card-subtitle">Manage your Confluence plugins list — data persists across sessions</div>
+          </div>
+          <div class="plugin-actions">
+            <button class="btn-sm btn-secondary" onclick="showBulkModal('confluence')">📋 Bulk Import</button>
+            <button class="btn-sm btn-add" onclick="showAddModal('confluence')">+ Add Plugin</button>
+          </div>
+        </div>
+        <div class="card-body" style="padding:0">
+          <div class="plugin-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Plugin Name</th>
+                  <th>Marketplace URL</th>
+                  <th>Current Version</th>
+                  <th>Notes</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="confluence-plugin-tbody">
+                <tr><td colspan="6"><div class="empty-state"><div class="empty-state-icon">🔌</div><div class="empty-state-text">No Confluence plugins yet. Click "+ Add Plugin" to get started.</div></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Progress -->
+      <div class="progress-panel" id="confluence-progress">
+        <div class="progress-header">
+          <div class="progress-title"><div class="spinner" id="confluence-spinner"></div> Scraping in progress...</div>
+          <span id="confluence-progress-count" style="color:#B0BEC5;font-size:11px;"></span>
+        </div>
+        <div class="progress-bar-wrap"><div class="progress-bar" id="confluence-progress-bar"></div></div>
+        <div id="confluence-progress-log"></div>
+      </div>
+
+      <!-- Results -->
+      <div id="confluence-results" class="hidden"></div>
+    </div>
+
+  </div><!-- /main-content -->
+</div><!-- /app -->
+
+<!-- ═══════════════════ ADD/EDIT PLUGIN MODAL ═══════════════════ -->
+<div class="modal-overlay hidden" id="plugin-modal" onclick="closeModalOnOverlay(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-title">Add Plugin</span>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="modal-plugin-id">
+      <input type="hidden" id="modal-plugin-type">
+      <div class="field-group">
+        <label>Plugin Name *</label>
+        <input type="text" id="modal-name" placeholder="e.g. ScriptRunner for Confluence">
+      </div>
+      <div class="field-group">
+        <label>Marketplace URL *</label>
+        <input type="text" id="modal-url" placeholder="https://marketplace.atlassian.com/apps/1215215/scriptrunner-for-confluence/version-history">
+        <div class="hint">Paste the version-history URL from Atlassian Marketplace</div>
+      </div>
+      <div class="field-group">
+        <label>Current Version *</label>
+        <input type="text" id="modal-version" placeholder="e.g. 8.57.0">
+        <div class="hint">The version currently installed in your Data Center instance</div>
+      </div>
+      <div class="field-group">
+        <label>Notes</label>
+        <textarea id="modal-notes" placeholder="Optional notes about this plugin..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-save" onclick="savePlugin()">Save Plugin</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ BULK IMPORT MODAL ═══════════════════ -->
+<div class="modal-overlay hidden" id="bulk-modal" onclick="closeBulkModalOnOverlay(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="bulk-modal-title">Bulk Import Plugins</span>
+      <button class="modal-close" onclick="closeBulkModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="bulk-type">
+      <p class="bulk-hint">Paste one plugin per line in the format:</p>
+      <p class="bulk-hint" style="background:#F4F5F7;padding:8px;border-radius:4px;font-family:monospace;font-size:12px;margin-bottom:12px;">Plugin Name | Marketplace URL | Current Version | Notes (optional)</p>
+      <p class="bulk-hint">Example:<br>
+        <code style="font-size:11px;background:#F4F5F7;padding:4px;display:block;margin-top:4px;border-radius:3px;">ScriptRunner | https://marketplace.atlassian.com/apps/1215215/... | 8.57.0 | Core plugin</code>
+      </p>
+      <div class="field-group" style="margin-top:12px;">
+        <label>Plugin Data</label>
+        <textarea id="bulk-data" rows="10" placeholder="Plugin Name | URL | Current Version | Notes&#10;Plugin Name | URL | Current Version"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeBulkModal()">Cancel</button>
+      <button class="btn-save" onclick="doBulkImport()">Import</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════ STATE ═══════════════════
+let currentTab = 'jira';
+let pluginsData = { jira: [], confluence: [] };
+let checkResults = { jira: null, confluence: null };
+
+// ═══════════════════ AUTH ═══════════════════
+async function doLogin() {
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value.trim();
+  const errEl = document.getElementById('login-error');
+  errEl.style.display = 'none';
+  if (!username || !password) {
+    errEl.textContent = 'Please enter username and password.';
+    errEl.style.display = 'block';
+    return;
+  }
+  const btn = document.getElementById('login-btn');
+  btn.disabled = true; btn.textContent = 'Signing in...';
+  try {
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await res.json();
+    if (data.success) {
+      showApp(data.user);
+    } else {
+      errEl.textContent = data.error || 'Login failed.';
+      errEl.style.display = 'block';
+    }
+  } catch (e) {
+    errEl.textContent = 'Connection error. Is the server running?';
+    errEl.style.display = 'block';
+  }
+  btn.disabled = false; btn.textContent = 'Sign in';
+}
+
+async function doLogout() {
+  await fetch('/api/logout', { method: 'POST' });
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('login-password').value = '';
+}
+
+async function checkSession() {
+  try {
+    const res = await fetch('/api/me');
+    if (res.ok) {
+      const data = await res.json();
+      showApp(data.user);
+    }
+  } catch (e) {}
+}
+
+function showApp(user) {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  document.getElementById('user-name').textContent = user.displayName;
+  document.getElementById('user-avatar').textContent = user.displayName.charAt(0).toUpperCase();
+  loadPlugins('jira');
+  loadPlugins('confluence');
+}
+
+// Enter key on login
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && document.getElementById('login-screen').style.display !== 'none') {
+    doLogin();
+  }
+});
+
+// ═══════════════════ TABS ═══════════════════
+function switchTab(tab) {
+  currentTab = tab;
+  document.getElementById('panel-jira').classList.toggle('hidden', tab !== 'jira');
+  document.getElementById('panel-confluence').classList.toggle('hidden', tab !== 'confluence');
+  document.getElementById('tab-jira').classList.toggle('active', tab === 'jira');
+  document.getElementById('tab-confluence').classList.toggle('active', tab === 'confluence');
+}
+
+// ═══════════════════ PLUGINS ═══════════════════
+async function loadPlugins(type) {
+  try {
+    const res = await fetch(`/api/plugins/${type}`);
+    const plugins = await res.json();
+    pluginsData[type] = plugins;
+    renderPluginTable(type);
+    document.getElementById(`${type}-count`).textContent = plugins.length;
+  } catch (e) {
+    console.error('Error loading plugins:', e);
+  }
+}
+
+function renderPluginTable(type) {
+  const tbody = document.getElementById(`${type}-plugin-tbody`);
+  const plugins = pluginsData[type];
+  if (plugins.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="empty-state-icon">🔌</div><div class="empty-state-text">No plugins yet. Click "+ Add Plugin" to get started.</div></div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = plugins.map((p, i) => `
+    <tr>
+      <td style="color:var(--gray-600);font-size:12px;">${i + 1}</td>
+      <td class="plugin-name">${escapeHtml(p.name)}</td>
+      <td class="plugin-url"><a href="${escapeHtml(p.marketplaceUrl)}" target="_blank" rel="noopener">${truncateUrl(p.marketplaceUrl)}</a></td>
+      <td><span class="version-pill">${escapeHtml(p.currentVersion)}</span></td>
+      <td style="color:var(--gray-600);font-size:12px;">${escapeHtml(p.notes || '—')}</td>
+      <td>
+        <div class="flex gap-8">
+          <button class="btn-sm btn-edit" onclick="editPlugin('${p._id}', '${type}')">✏️ Edit</button>
+          <button class="btn-sm btn-danger" onclick="deletePlugin('${p._id}', '${type}')">🗑 Delete</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+// ═══════════════════ MODAL ═══════════════════
+function showAddModal(type) {
+  document.getElementById('modal-title').textContent = 'Add Plugin';
+  document.getElementById('modal-plugin-id').value = '';
+  document.getElementById('modal-plugin-type').value = type;
+  document.getElementById('modal-name').value = '';
+  document.getElementById('modal-url').value = '';
+  document.getElementById('modal-version').value = '';
+  document.getElementById('modal-notes').value = '';
+  document.getElementById('plugin-modal').classList.remove('hidden');
+}
+
+function editPlugin(id, type) {
+  const plugin = pluginsData[type].find(p => p._id === id);
+  if (!plugin) return;
+  document.getElementById('modal-title').textContent = 'Edit Plugin';
+  document.getElementById('modal-plugin-id').value = id;
+  document.getElementById('modal-plugin-type').value = type;
+  document.getElementById('modal-name').value = plugin.name;
+  document.getElementById('modal-url').value = plugin.marketplaceUrl;
+  document.getElementById('modal-version').value = plugin.currentVersion;
+  document.getElementById('modal-notes').value = plugin.notes || '';
+  document.getElementById('plugin-modal').classList.remove('hidden');
+}
+
+function closeModal() {
+  document.getElementById('plugin-modal').classList.add('hidden');
+}
+
+function closeModalOnOverlay(e) {
+  if (e.target === document.getElementById('plugin-modal')) closeModal();
+}
+
+async function savePlugin() {
+  const id = document.getElementById('modal-plugin-id').value;
+  const type = document.getElementById('modal-plugin-type').value;
+  const name = document.getElementById('modal-name').value.trim();
+  const marketplaceUrl = document.getElementById('modal-url').value.trim();
+  const currentVersion = document.getElementById('modal-version').value.trim();
+  const notes = document.getElementById('modal-notes').value.trim();
+
+  if (!name || !marketplaceUrl || !currentVersion) {
+    alert('Plugin Name, URL, and Current Version are required.');
+    return;
+  }
+
+  const payload = { type, name, marketplaceUrl, currentVersion, notes };
+
+  try {
+    let res;
+    if (id) {
+      res = await fetch(`/api/plugins/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    } else {
+      res = await fetch('/api/plugins', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    }
+    if (res.ok) {
+      closeModal();
+      await loadPlugins(type);
+    } else {
+      const err = await res.json();
+      alert('Error: ' + (err.error || 'Unknown error'));
+    }
+  } catch (e) {
+    alert('Error saving plugin: ' + e.message);
+  }
+}
+
+async function deletePlugin(id, type) {
+  if (!confirm('Delete this plugin?')) return;
+  try {
+    await fetch(`/api/plugins/${id}`, { method: 'DELETE' });
+    await loadPlugins(type);
+  } catch (e) {
+    alert('Error deleting plugin: ' + e.message);
+  }
+}
+
+// ═══════════════════ BULK IMPORT ═══════════════════
+function showBulkModal(type) {
+  document.getElementById('bulk-type').value = type;
+  document.getElementById('bulk-modal-title').textContent = `Bulk Import ${type === 'jira' ? 'Jira' : 'Confluence'} Plugins`;
+  document.getElementById('bulk-data').value = '';
+  document.getElementById('bulk-modal').classList.remove('hidden');
+}
+
+function closeBulkModal() {
+  document.getElementById('bulk-modal').classList.add('hidden');
+}
+
+function closeBulkModalOnOverlay(e) {
+  if (e.target === document.getElementById('bulk-modal')) closeBulkModal();
+}
+
+async function doBulkImport() {
+  const type = document.getElementById('bulk-type').value;
+  const rawData = document.getElementById('bulk-data').value.trim();
+  if (!rawData) return alert('Please enter plugin data.');
+
+  const lines = rawData.split('\n').filter(l => l.trim());
+  const plugins = [];
+
+  for (const line of lines) {
+    const parts = line.split('|').map(p => p.trim());
+    if (parts.length < 3) continue;
+    plugins.push({
+      type,
+      name: parts[0],
+      marketplaceUrl: parts[1],
+      currentVersion: parts[2],
+      notes: parts[3] || ''
+    });
+  }
+
+  if (plugins.length === 0) return alert('No valid plugins found. Use the format: Name | URL | Version | Notes');
+
+  try {
+    const res = await fetch('/api/plugins/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plugins })
+    });
+    const data = await res.json();
+    if (data.success) {
+      closeBulkModal();
+      await loadPlugins(type);
+      alert(`Successfully imported ${data.count} plugins!`);
+    } else {
+      alert('Error: ' + data.error);
+    }
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+// ═══════════════════ COMPATIBILITY CHECK ═══════════════════
+function startCheck(type) {
+  const versionInput = document.getElementById(`${type}-dc-version`).value.trim();
+  if (!versionInput) {
+    alert(`Please enter the target ${type === 'jira' ? 'Jira' : 'Confluence'} DC version.`);
+    return;
+  }
+
+  const plugins = pluginsData[type];
+  if (plugins.length === 0) {
+    alert(`No ${type === 'jira' ? 'Jira' : 'Confluence'} plugins found. Please add plugins first.`);
+    return;
+  }
+
+  // Reset UI
+  const progressPanel = document.getElementById(`${type}-progress`);
+  const progressLog = document.getElementById(`${type}-progress-log`);
+  const progressBar = document.getElementById(`${type}-progress-bar`);
+  const progressCount = document.getElementById(`${type}-progress-count`);
+  const resultsDiv = document.getElementById(`${type}-results`);
+  const checkBtn = document.getElementById(`${type}-check-btn`);
+
+  progressLog.innerHTML = '';
+  progressBar.style.width = '0%';
+  progressPanel.classList.add('active');
+  resultsDiv.classList.add('hidden');
+  checkBtn.disabled = true;
+  checkBtn.innerHTML = `<div style="width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:white;border-radius:50%;animation:spin .7s linear infinite;"></div> Checking...`;
+
+  let processedCount = 0;
+  const total = plugins.length;
+
+  const url = `/api/check-compatibility?type=${type}&targetDCVersion=${encodeURIComponent(versionInput)}`;
+  const eventSource = new EventSource(url);
+
+  eventSource.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+
+    if (data.type === 'start') {
+      addProgressLine(progressLog, data.message, 'start');
+      progressCount.textContent = `0 / ${data.total}`;
+    } else if (data.type === 'progress') {
+      addProgressLine(progressLog, data.message, '');
+      if (data.message.includes('[')) {
+        const match = data.message.match(/\[(\d+)\/(\d+)\]/);
+        if (match) {
+          processedCount = parseInt(match[1]);
+          const pct = Math.round((processedCount / total) * 100);
+          progressBar.style.width = `${pct}%`;
+          progressCount.textContent = `${processedCount} / ${total}`;
+        }
+      }
+    } else if (data.type === 'complete') {
+      progressBar.style.width = '100%';
+      addProgressLine(progressLog, `✓ Done! ${data.results.length} plugins processed.`, 'complete');
+      progressCount.textContent = `${total} / ${total}`;
+      document.getElementById(`${type}-spinner`).style.display = 'none';
+
+      checkResults[type] = { results: data.results, targetDCVersion: versionInput };
+      renderResults(type, data.results, versionInput);
+
+      checkBtn.disabled = false;
+      checkBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M6.5 0a6.5 6.5 0 0 1 5.19 10.397l4.207 4.206-.707.707-4.206-4.207A6.5 6.5 0 1 1 6.5 0Zm0 1a5.5 5.5 0 1 0 0 11A5.5 5.5 0 0 0 6.5 1Z"/></svg> Check Compatibility`;
+      eventSource.close();
+    } else if (data.type === 'error') {
+      addProgressLine(progressLog, `❌ Error: ${data.message}`, 'error');
+      checkBtn.disabled = false;
+      checkBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M6.5 0a6.5 6.5 0 0 1 5.19 10.397l4.207 4.206-.707.707-4.206-4.207A6.5 6.5 0 1 1 6.5 0Zm0 1a5.5 5.5 0 1 0 0 11A5.5 5.5 0 0 0 6.5 1Z"/></svg> Check Compatibility`;
+      eventSource.close();
+    }
+  };
+
+  eventSource.onerror = () => {
+    addProgressLine(progressLog, '❌ Connection lost.', 'error');
+    checkBtn.disabled = false;
+    checkBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M6.5 0a6.5 6.5 0 0 1 5.19 10.397l4.207 4.206-.707.707-4.206-4.207A6.5 6.5 0 1 1 6.5 0Zm0 1a5.5 5.5 0 1 0 0 11A5.5 5.5 0 0 0 6.5 1Z"/></svg> Check Compatibility`;
+    eventSource.close();
+  };
+}
+
+function addProgressLine(container, message, cssClass) {
+  const line = document.createElement('div');
+  line.className = `progress-line ${cssClass}`;
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+  container.appendChild(line);
+  container.scrollTop = container.scrollHeight;
+}
+
+// ═══════════════════ RENDER RESULTS ═══════════════════
+function renderResults(type, results, targetDCVersion) {
+  const container = document.getElementById(`${type}-results`);
+  container.classList.remove('hidden');
+
+  const compatible = results.filter(r => r.compatible === true).length;
+  const notCompatible = results.filter(r => r.compatible === false).length;
+  const errors = results.filter(r => r.error && r.compatible === null).length;
+  const total = results.length;
+  const productLabel = type === 'jira' ? 'Jira' : 'Confluence';
+
+  const rows = results.map((r, i) => {
+    let badgeHtml, rowClass;
+    if (r.error && r.compatible === null) {
+      badgeHtml = `<span class="result-badge badge-error">⚠️ Error</span>`;
+      rowClass = 'style="background:#FFFBEB;"';
+    } else if (r.compatible === true) {
+      badgeHtml = `<span class="result-badge badge-compatible">✅ Compatible</span>`;
+      rowClass = 'style="background:#F0FDF4;"';
+    } else if (r.compatible === false) {
+      badgeHtml = `<span class="result-badge badge-not-compatible">❌ Not Compatible</span>`;
+      rowClass = 'style="background:#FEF2F2;"';
+    } else {
+      badgeHtml = `<span class="result-badge badge-unknown">❓ Unknown</span>`;
+      rowClass = '';
+    }
+
+    const errorText = r.error ? `<div style="font-size:11px;color:var(--orange);margin-top:4px;">⚠ ${escapeHtml(r.error)}</div>` : '';
+    const recommended = r.recommendedVersion || (r.compatible ? r.currentVersion : '—');
+
+    return `
+      <tr ${rowClass}>
+        <td style="color:var(--gray-600);font-size:12px;text-align:center;">${i + 1}</td>
+        <td class="plugin-name">${escapeHtml(r.pluginName)}${errorText}</td>
+        <td style="text-align:center;"><span class="version-pill">${escapeHtml(r.currentVersion)}</span></td>
+        <td style="text-align:center;">${badgeHtml}</td>
+        <td style="text-align:center;"><span class="version-pill">${escapeHtml(recommended)}</span></td>
+        <td style="text-align:center;color:var(--gray-700);font-size:12px;">${escapeHtml(r.compatibleVersionRange || '—')}</td>
+        <td style="font-size:12px;color:var(--gray-600);">${escapeHtml(
+          r.compatibleVersions && r.compatibleVersions.length > 0
+            ? (r.compatibleVersions.find(cv => cv.pluginVersion === r.recommendedVersion) || r.compatibleVersions[0]).compatibility || '—'
+            : '—'
+        )}</td>
+      </tr>
+    `;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="results-header">
+      <div class="results-title">Results — ${productLabel} DC ${targetDCVersion}</div>
+      <button class="btn-download" onclick="downloadExcel('${type}')">
+        📥 Download Excel Report
+      </button>
+    </div>
+    <div class="stats-row">
+      <div class="stat-card total">
+        <div class="stat-num">${total}</div>
+        <div class="stat-label">Total Checked</div>
+      </div>
+      <div class="stat-card compatible">
+        <div class="stat-num">${compatible}</div>
+        <div class="stat-label">Compatible</div>
+      </div>
+      <div class="stat-card not-compatible">
+        <div class="stat-num">${notCompatible}</div>
+        <div class="stat-label">Not Compatible</div>
+      </div>
+      <div class="stat-card error">
+        <div class="stat-num">${errors}</div>
+        <div class="stat-label">Errors</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-body" style="padding:0">
+        <div class="plugin-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="text-align:center;">#</th>
+                <th>Plugin Name</th>
+                <th style="text-align:center;">Current Version</th>
+                <th style="text-align:center;">Compatible with DC ${escapeHtml(targetDCVersion)}?</th>
+                <th style="text-align:center;">Recommended Version</th>
+                <th style="text-align:center;">Compatible Version Range</th>
+                <th>DC Compatibility (Recommended)</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ═══════════════════ EXCEL DOWNLOAD ═══════════════════
+async function downloadExcel(type) {
+  const data = checkResults[type];
+  if (!data) return alert('No results to download.');
+
+  try {
+    const res = await fetch('/api/download-excel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        results: data.results,
+        type,
+        targetDCVersion: data.targetDCVersion
+      })
+    });
+
+    if (!res.ok) throw new Error('Download failed');
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${type}-compat-dc${data.targetDCVersion}-${Date.now()}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    alert('Error downloading Excel: ' + e.message);
+  }
+}
+
+// ═══════════════════ UTILS ═══════════════════
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function truncateUrl(url, len = 60) {
+  return url && url.length > len ? url.substring(0, len) + '...' : url;
+}
+
+// ═══════════════════ INIT ═══════════════════
+checkSession();
+</script>
+</body>
+</html>
