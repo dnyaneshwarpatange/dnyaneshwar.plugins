@@ -18,7 +18,7 @@ const USERS = [
 ];
 
 // ─── MongoDB Connection ───────────────────────────────────────────────────────
-const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://erdnyaneshwarpatange_db_user:7gb3YSYvwLcTHeGi@cluster0.0vluu1j.mongodb.net/atlassian-compat?retryWrites=true&w=majority';
+const MONGO_URI = process.env.MONGO_URI;
 
 mongoose.connect(MONGO_URI, {
   serverSelectionTimeoutMS: 5000,
