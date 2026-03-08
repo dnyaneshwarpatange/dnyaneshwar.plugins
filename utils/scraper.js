@@ -20,64 +20,6 @@ const puppeteer = require('puppeteer');
 const https     = require('https');
 const http      = require('http');
 const urlMod    = require('url');
-const fs        = require('fs');
-
-// ═══════════════════════════════════════════════════════════════════════════
-//  CROSS-ENVIRONMENT CHROME RESOLVER
-// ═══════════════════════════════════════════════════════════════════════════
-
-function resolveChromePath() {
-  // 1. Honour explicit env var (set this in Render/VPS dashboard)
-  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-    return process.env.PUPPETEER_EXECUTABLE_PATH;
-  }
-
-  // 2. Well-known system Chrome/Chromium paths (Linux VPS, Render build with apt)
-  const systemPaths = [
-    '/usr/bin/google-chrome-stable',
-    '/usr/bin/google-chrome',
-    '/usr/bin/chromium-browser',
-    '/usr/bin/chromium',
-    '/snap/bin/chromium',
-    // macOS
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    // Windows
-    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-  ];
-
-  const found = systemPaths.find(p => fs.existsSync(p));
-  if (found) return found;
-
-  // 3. Fall back to Puppeteer's own bundled browser (works locally & after
-  //    `npx puppeteer browsers install chrome` runs in postinstall)
-  return null;
-}
-
-function buildLaunchOptions() {
-  const executablePath = resolveChromePath();
-  const opts = {
-    headless: 'new',
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--disable-gpu',
-      '--no-first-run',
-      '--no-zygote',
-      '--single-process',         // needed on Render free tier
-      '--disable-extensions',
-    ],
-  };
-  if (executablePath) {
-    opts.executablePath = executablePath;
-    console.log(`🌐 Chrome: ${executablePath}`);
-  } else {
-    console.log('🌐 Chrome: using Puppeteer bundled browser');
-  }
-  return opts;
-}
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  VERSION ENGINE
@@ -95,7 +37,7 @@ function parseSegment(seg) {
 function compareSegments(sa, sb) {
   if (sa.num !== sb.num) return sa.num < sb.num ? -1 : 1;
   if (sa.alpha === sb.alpha) return 0;
-  if (sa.alpha === '') return -1;
+  if (sa.alpha === '') return -1;  // "8" < "8a"
   if (sb.alpha === '') return  1;
   return sa.alpha < sb.alpha ? -1 : 1;
 }
@@ -136,7 +78,7 @@ function parseCompatibilityString(text) {
   if (!tokens.length) return { minVersion: null, maxVersion: null, rawText };
   if (tokens.length === 1) return { minVersion: tokens[0], maxVersion: tokens[0], rawText };
   let [min, max] = [tokens[0], tokens[tokens.length - 1]];
-  if (compareVersions(min, max) > 0) [min, max] = [max, min];
+  if (compareVersions(min, max) > 0) [min, max] = [max, min]; // safety swap
   return { minVersion: min, maxVersion: max, rawText };
 }
 
@@ -152,6 +94,9 @@ function normalizeVersionHistoryUrl(rawUrl) {
   return base + '?versionHistoryHosting=dataCenter';
 }
 
+/** * Extract addon ID first (more reliable), then slug.
+ * ".../apps/1215215/scriptrunner..." → { id: "1215215", slug: "scriptrunner" }
+ */
 function extractAddonIdentifiers(marketplaceUrl) {
   try {
     const parts = new urlMod.URL(marketplaceUrl).pathname.split('/').filter(Boolean);
@@ -159,8 +104,9 @@ function extractAddonIdentifiers(marketplaceUrl) {
     if (appsIdx >= 0) {
       const id = parts[appsIdx + 1];
       const slug = parts[appsIdx + 2];
+      // Basic validation to ensure we grabbed meaningful parts
       if (id && /^\d+$/.test(id)) {
-        return { id, slug: (slug && !['version-history','overview'].includes(slug)) ? slug : null };
+         return { id, slug: (slug && !['version-history','overview'].includes(slug)) ? slug : null };
       }
     }
   } catch (_) {}
@@ -212,6 +158,7 @@ async function fetchFromInitialState(pageUrl, progressCallback) {
   progressCallback('  [Method 1] Fetching page HTML for initial-state JSON...');
   const html = await httpGet(pageUrl, { 'Accept': 'text/html' });
 
+  // Improved regex to capture content more robustly
   const scriptMatch = html.match(/<script[^>]+id=["']initial-state["'][^>]*>([\s\S]*?)<\/script>/i);
   if (!scriptMatch) throw new Error('initial-state script tag not found');
 
@@ -219,11 +166,12 @@ async function fetchFromInitialState(pageUrl, progressCallback) {
   try {
     stateJson = JSON.parse(scriptMatch[1]);
   } catch (_) {
+    // Sometimes content is HTML-encoded
     try {
-      const decoded = scriptMatch[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&');
-      stateJson = JSON.parse(decoded);
+        const decoded = scriptMatch[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+        stateJson = JSON.parse(decoded);
     } catch (e2) {
-      throw new Error('initial-state JSON parse failed');
+        throw new Error('initial-state JSON parse failed');
     }
   }
 
@@ -241,7 +189,8 @@ function walkInitialState(node, collected, depth = 0) {
     for (const item of node) walkInitialState(item, collected, depth + 1);
     return;
   }
-
+  
+  // Look for version string
   const versionStr = node.name || node.version || '';
   if (versionStr && /^\d+\.\d+/.test(String(versionStr)) && String(versionStr).length < 25) {
     const entry = extractVersionFromStateNode(node, versionStr);
@@ -273,7 +222,7 @@ function extractVersionFromStateNode(node, versionStr) {
 
   return {
     version:        String(versionStr),
-    compatibility:  `${min} - ${max}`,
+    compatibility:  `${min} - ${max}`, // Simplified
     releaseDate:    node.releaseDate || (node.release && node.release.date) || '',
     releaseSummary: (node.release && node.release.notes) || node.releaseSummary || '',
     minVersion:     min,
@@ -287,28 +236,30 @@ function extractVersionFromStateNode(node, versionStr) {
 
 async function fetchFromAPI(identifiers, progressCallback) {
   const { id, slug } = identifiers;
-  const resourceKey = id || slug;
-
+  // Try ID first if available (more reliable than slug which can change/be messy)
+  const resourceKey = id || slug; 
+  
   if (!resourceKey) throw new Error('No ID or slug found');
 
   progressCallback(`  [Method 2] REST API using key: ${resourceKey}`);
   const allVersions = [];
   const LIMIT = 50;
   let offset  = 0;
-
+  
   do {
     const apiUrl = `https://marketplace.atlassian.com/rest/2/addons/${resourceKey}/versions` +
                    `?hosting=datacenter&limit=${LIMIT}&offset=${offset}`;
-
+    
+    // Silence detailed logs for pages 2+
     if (offset === 0) progressCallback(`  [Method 2] Requesting: ${apiUrl}`);
 
     const body = await httpGet(apiUrl);
     const data = JSON.parse(body);
-
+    
     let items = [];
     if (Array.isArray(data._embedded && data._embedded.versions)) items = data._embedded.versions;
     else if (Array.isArray(data.versions)) items = data.versions;
-
+    
     if (!items.length) break;
 
     for (const v of items) {
@@ -317,7 +268,7 @@ async function fetchFromAPI(identifiers, progressCallback) {
     }
 
     offset += LIMIT;
-    if (items.length < LIMIT) break;
+    if (items.length < LIMIT) break; // End of list
     await new Promise(r => setTimeout(r, 400));
   } while (true);
 
@@ -333,19 +284,22 @@ async function fetchFromAPI(identifiers, progressCallback) {
 async function fetchFromPuppeteer(browser, pageUrl, pluginName, progressCallback) {
   progressCallback(`  [Method 3] Browser rendering: ${pageUrl}`);
   const page = await browser.newPage();
-
+  
   await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
   await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
 
   try {
     await page.goto(pageUrl, { waitUntil: 'networkidle0', timeout: 60000 });
 
+    // 1. Wait for Treegrid
     try {
       await page.waitForSelector('[role="treegrid"]', { timeout: 15000 });
     } catch(e) {
+      // Fallback to waiting for anything table-like if treegrid fails
       await page.waitForSelector('[role="row"], table', { timeout: 5000 });
     }
 
+    // 2. Click "Load More"
     let loadClicks = 0;
     while (loadClicks < 25) {
       const clicked = await page.evaluate(() => {
@@ -367,20 +321,30 @@ async function fetchFromPuppeteer(browser, pageUrl, pluginName, progressCallback
       if (loadClicks % 5 === 0) progressCallback(`  [Method 3] Expanded history (${loadClicks} clicks)`);
     }
 
+    // 3. Extract Data (Robust Selector Strategy)
     const versions = await page.evaluate(() => {
       const rows = [];
+      // Looser selector: find ANY row inside the treegrid, ignore 'aria-expanded' requirements
+      // which might be flaky.
       const versionRows = document.querySelectorAll('[role="treegrid"] [role="row"], [role="rowgroup"] [role="row"]');
 
       versionRows.forEach(row => {
         const cells = Array.from(row.querySelectorAll('[role="gridcell"]'));
         if (cells.length < 3) return;
 
+        // CELL 1: Version
+        // Instead of traversing spans, get all text and regex match the first version-like string
         const t1 = cells[0].innerText || cells[0].textContent;
+        // Regex: start of line or whitespace, followed by digits.digits...
         const vMatch = t1.match(/(?:^|\s)(\d+\.[0-9a-zA-Z.]+)(?:$|\s)/);
         if (!vMatch) return;
         const version = vMatch[1].trim();
 
+        // CELL 2: Compatibility
+        // Often contains "Confluence Data Center 8.0 - 9.0"
         const compatibility = cells[1].innerText || cells[1].textContent;
+
+        // CELL 3: Date
         const releaseDate = cells[2].innerText || cells[2].textContent;
 
         rows.push({
@@ -399,7 +363,11 @@ async function fetchFromPuppeteer(browser, pageUrl, pluginName, progressCallback
 
     return versions.map(v => {
       const parsed = parseCompatibilityString(v.compatibility);
-      return { ...v, minVersion: parsed.minVersion, maxVersion: parsed.maxVersion };
+      return {
+        ...v,
+        minVersion: parsed.minVersion,
+        maxVersion: parsed.maxVersion
+      };
     });
 
   } catch (err) {
@@ -417,6 +385,7 @@ async function fetchAllVersions(browser, plugin, progressCallback) {
   const identifiers = extractAddonIdentifiers(plugin.marketplaceUrl);
   const errors = [];
 
+  // 1. Initial State
   try {
     const versions = await fetchFromInitialState(pageUrl, progressCallback);
     return { versions, method: 'initial-state' };
@@ -424,6 +393,7 @@ async function fetchAllVersions(browser, plugin, progressCallback) {
     errors.push(`initial-state: ${e.message}`);
   }
 
+  // 2. REST API (Try ID, then Slug)
   if (identifiers.id || identifiers.slug) {
     try {
       const versions = await fetchFromAPI(identifiers, progressCallback);
@@ -433,6 +403,7 @@ async function fetchAllVersions(browser, plugin, progressCallback) {
     }
   }
 
+  // 3. Puppeteer
   try {
     const versions = await fetchFromPuppeteer(browser, pageUrl, plugin.name, progressCallback);
     return { versions, method: 'puppeteer' };
@@ -446,10 +417,12 @@ async function fetchAllVersions(browser, plugin, progressCallback) {
 function buildResult(plugin, rawVersions, targetDCVersion, fetchMethod) {
   const { name: pluginName, marketplaceUrl: pluginUrl, currentVersion } = plugin;
   const compatibleVersions = [];
+  const parseWarnings = [];
 
   for (const v of rawVersions) {
     let { minVersion, maxVersion } = v;
 
+    // Fallback parsing if missing
     if (!minVersion || !maxVersion) {
       const parsed = parseCompatibilityString(v.compatibility);
       minVersion = parsed.minVersion;
@@ -475,6 +448,7 @@ function buildResult(plugin, rawVersions, targetDCVersion, fetchMethod) {
 
   let recommendedVersion = null;
   if (compatibleVersions.length > 0) {
+    // Sort desc
     recommendedVersion = compatibleVersions.sort((a, b) =>
       compareVersions(b.pluginVersion, a.pluginVersion)
     )[0].pluginVersion;
@@ -500,6 +474,7 @@ function buildResult(plugin, rawVersions, targetDCVersion, fetchMethod) {
     recommendedVersion,
     totalVersionsChecked:   rawVersions.length,
     allVersions:            rawVersions,
+    parseWarnings,
     error: null
   };
 }
@@ -512,9 +487,10 @@ async function checkCompatibility(plugins, targetDCVersion, progressCallback) {
   if (!progressCallback) progressCallback = () => {};
 
   progressCallback('Launching browser (used only as final fallback)...');
-
-  // ← THE KEY FIX: resolves Chrome path for local / VPS / Render automatically
-  const browser = await puppeteer.launch(buildLaunchOptions());
+  const browser = await puppeteer.launch({
+    headless: 'new',
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+  });
 
   const results = [];
 
